@@ -20,12 +20,13 @@ from database import (
     update_player,
 )
 
+
 from systems.inventory import (
     init_inventory,
     format_inventory,
     add_item,
+    get_inventory,
 )
-
 
 TOKEN = os.getenv("BOT_TOKEN")
 
