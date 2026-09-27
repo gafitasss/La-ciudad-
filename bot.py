@@ -1,4 +1,4 @@
-import os
+0import os
 
 from telegram import (
     Update,
@@ -156,6 +156,20 @@ Has trabajado en la ciudad.
 """
 
     elif query.data == "inventory":
+
+    items = get_inventory(
+        query.from_user.id
+    )
+
+    if not items:
+        add_item(
+            query.from_user.id,
+            "🔧 Herramienta oxidada",
+            "common",
+            attack=2,
+            defense=1,
+            luck=1
+        )
 
     text = format_inventory(
         query.from_user.id
