@@ -69,7 +69,16 @@ def ensure_player(user):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     player = ensure_player(update.effective_user)
+if not get_inventory(update.effective_user.id):
 
+    add_item(
+        update.effective_user.id,
+        "🔧 Herramienta oxidada",
+        "common",
+        attack=2,
+        defense=1,
+        luck=1
+    )
     await update.message.reply_text(
         f"""
 🌆 LA CIUDAD 24/7
