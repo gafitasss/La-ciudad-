@@ -262,7 +262,8 @@ def main():
             "BOT_TOKEN no está configurado."
         )
 
-    init_database()
+init_database()
+init_inventory()
 
     application = (
         Application.builder()
