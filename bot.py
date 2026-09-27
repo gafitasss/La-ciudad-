@@ -1,6 +1,11 @@
 import os
-import sqlite3
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
+
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -8,67 +13,18 @@ from telegram.ext import (
     ContextTypes,
 )
 
+from database import (
+    init_database,
+    get_player,
+    create_player,
+    update_player,
+)
+
+
 TOKEN = os.getenv("BOT_TOKEN")
-DB = "data/game.db"
 
 
-def get_db():
-    os.makedirs("data", exist_ok=True)
-    conn = sqlite3.connect(DB)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def init_db():
-    conn = get_db()
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS players (
-            id INTEGER PRIMARY KEY,
-            username TEXT,
-            money INTEGER DEFAULT 1000,
-            xp INTEGER DEFAULT 0,
-            level INTEGER DEFAULT 1,
-            energy INTEGER DEFAULT 100,
-            health INTEGER DEFAULT 100,
-            fame INTEGER DEFAULT 0
-        )
-    """)
-
-    conn.commit()
-    conn.close()
-
-
-def get_player(user):
-    conn = get_db()
-
-    player = conn.execute(
-        "SELECT * FROM players WHERE id = ?",
-        (user.id,)
-    ).fetchone()
-
-    if player is None:
-        conn.execute("""
-            INSERT INTO players
-            (id, username)
-            VALUES (?, ?)
-        """, (
-            user.id,
-            user.username or user.first_name
-        ))
-
-        conn.commit()
-
-        player = conn.execute(
-            "SELECT * FROM players WHERE id = ?",
-            (user.id,)
-        ).fetchone()
-
-    conn.close()
-    return player
-
-
-def menu():
+def main_menu():
     keyboard = [
         [
             InlineKeyboardButton("👤 PERFIL", callback_data="profile"),
@@ -90,8 +46,22 @@ def menu():
     return InlineKeyboardMarkup(keyboard)
 
 
+def ensure_player(user):
+    player = get_player(user.id)
+
+    if player is None:
+        create_player(
+            user.id,
+            user.username or user.first_name
+        )
+
+        player = get_player(user.id)
+
+    return player
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    player = get_player(update.effective_user)
+    player = ensure_player(update.effective_user)
 
     await update.message.reply_text(
         f"""
@@ -100,25 +70,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Bienvenido, {player['username']}.
 
 ⭐ Nivel: {player['level']}
-💰 Dinero: {player['money']} 🪙
 ⭐ XP: {player['xp']}
+
+💰 Dinero: {player['money']} 🪙
 ⚡ Energía: {player['energy']}
 ❤️ Vida: {player['health']}
 🔥 Fama: {player['fame']}
 
 ¿Qué quieres hacer?
 """,
-        reply_markup=menu()
+        reply_markup=main_menu()
     )
 
 
-async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def buttons(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
     query = update.callback_query
+
     await query.answer()
 
-    player = get_player(query.from_user)
+    player = ensure_player(query.from_user)
 
     if query.data == "profile":
+
         text = f"""
 👤 PERFIL
 
@@ -134,24 +110,29 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """
 
     elif query.data == "work":
+
         if player["energy"] < 10:
-            text = "⚡ No tienes suficiente energía."
+
+            text = """
+⚡ SIN ENERGÍA
+
+Necesitas al menos 10 de energía
+para trabajar.
+"""
+
         else:
-            conn = get_db()
 
-            conn.execute("""
-                UPDATE players
-                SET money = money + 100,
-                    xp = xp + 25,
-                    energy = energy - 10
-                WHERE id = ?
-            """, (query.from_user.id,))
-
-            conn.commit()
-            conn.close()
+            update_player(
+                query.from_user.id,
+                money=player["money"] + 100,
+                xp=player["xp"] + 25,
+                energy=player["energy"] - 10
+            )
 
             text = """
 💼 TRABAJO COMPLETADO
+
+Has trabajado en la ciudad.
 
 💰 +100 🪙
 ⭐ +25 XP
@@ -159,12 +140,13 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """
 
     elif query.data == "inventory":
+
         text = """
 🎒 INVENTARIO
 
-🎒 Vacío
+Todavía está vacío.
 
-Próximamente podrás conseguir:
+Próximamente:
 
 ⚪ Común
 🟢 Poco común
@@ -175,12 +157,13 @@ Próximamente podrás conseguir:
 """
 
     elif query.data == "combat":
+
         text = """
 ⚔️ COMBATE
 
-Todavía no tienes enemigos.
+Todavía estás empezando.
 
-Próximamente podrás enfrentarte a:
+Próximamente podrás luchar contra:
 
 👤 Jugadores
 👹 Jefes
@@ -189,82 +172,110 @@ Próximamente podrás enfrentarte a:
 """
 
     elif query.data == "daily":
+
+        update_player(
+            query.from_user.id,
+            money=player["money"] + 250,
+            xp=player["xp"] + 50
+        )
+
         text = """
 🎁 REGALO DIARIO
 
 💰 +250 🪙
 ⭐ +50 XP
 
-Sistema de rachas próximamente.
+🔥 Próximamente tendremos
+rachas diarias.
 """
 
-        conn = get_db()
-
-        conn.execute("""
-            UPDATE players
-            SET money = money + 250,
-                xp = xp + 50
-            WHERE id = ?
-        """, (query.from_user.id,))
-
-        conn.commit()
-        conn.close()
-
     elif query.data == "ranking":
-        conn = get_db()
 
-        players = conn.execute("""
+        from database import get_connection
+
+        connection = get_connection()
+
+        players = connection.execute(
+            """
             SELECT username, level, xp, money
             FROM players
             ORDER BY level DESC, xp DESC
             LIMIT 10
-        """).fetchall()
+            """
+        ).fetchall()
 
-        conn.close()
+        connection.close()
 
         text = "🏆 RANKING\n\n"
 
-        for i, p in enumerate(players, 1):
-            text += (
-                f"{i}️⃣ {p['username']} "
-                f"⭐ {p['level']} "
-                f"💰 {p['money']}\n"
-            )
+        if not players:
+
+            text += "Todavía no hay jugadores."
+
+        else:
+
+            for position, p in enumerate(players, 1):
+
+                text += (
+                    f"{position}️⃣ "
+                    f"{p['username']} "
+                    f"⭐ {p['level']} "
+                    f"💰 {p['money']} 🪙\n"
+                )
 
     elif query.data == "clans":
+
         text = """
 🏴 CLANES
 
-Sistema de clanes próximamente.
+El sistema de clanes está
+en construcción.
 
 👥 Mínimo para fundar: 5
 👥 Máximo inicial: 10
 👥 Máximo final: 20
 
-⚔️ Guerras: 10 vs 10
+⚔️ Guerra: 10 vs 10
 ⚖️ Emparejamiento equilibrado
+⏱️ Preparación: 24 horas
 """
 
     else:
+
         text = "❓ Acción desconocida."
 
     await query.edit_message_text(
         text,
-        reply_markup=menu()
+        reply_markup=main_menu()
     )
 
 
 def main():
-    init_db()
 
-    app = Application.builder().token(TOKEN).build()
+    if not TOKEN:
+        raise RuntimeError(
+            "BOT_TOKEN no está configurado."
+        )
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(buttons))
+    init_database()
+
+    application = (
+        Application.builder()
+        .token(TOKEN)
+        .build()
+    )
+
+    application.add_handler(
+        CommandHandler("start", start)
+    )
+
+    application.add_handler(
+        CallbackQueryHandler(buttons)
+    )
 
     print("🌆 LA CIUDAD 24/7 iniciada")
 
-    app.run_polling()
+    application.run_polling()
 
 
 if __name__ == "__main__":
