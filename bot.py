@@ -146,20 +146,9 @@ Has trabajado en la ciudad.
 
     elif query.data == "inventory":
 
-        text = """
-🎒 INVENTARIO
-
-Todavía está vacío.
-
-Próximamente:
-
-⚪ Común
-🟢 Poco común
-🔵 Raro
-🟣 Épico
-🟠 Legendario
-🔴 Mítico
-"""
+    text = format_inventory(
+        query.from_user.id
+    )
 
     elif query.data == "combat":
 
