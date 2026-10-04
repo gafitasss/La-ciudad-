@@ -25,9 +25,37 @@ def init_database():
             level INTEGER DEFAULT 1,
             health INTEGER DEFAULT 100,
             energy INTEGER DEFAULT 100,
-            fame INTEGER DEFAULT 0
+            fame INTEGER DEFAULT 0,
+            attack INTEGER DEFAULT 10,
+            defense INTEGER DEFAULT 10,
+            luck INTEGER DEFAULT 10,
+            last_daily TEXT DEFAULT '',
+            last_work TEXT DEFAULT ''
         )
     """)
+
+    connection.commit()
+
+    # Añadimos columnas nuevas si la base de datos ya existía
+    columns = {
+        "attack": "INTEGER DEFAULT 10",
+        "defense": "INTEGER DEFAULT 10",
+        "luck": "INTEGER DEFAULT 10",
+        "last_daily": "TEXT DEFAULT ''",
+        "last_work": "TEXT DEFAULT ''",
+    }
+
+    existing = connection.execute(
+        "PRAGMA table_info(players)"
+    ).fetchall()
+
+    existing_names = {column["name"] for column in existing}
+
+    for name, definition in columns.items():
+        if name not in existing_names:
+            connection.execute(
+                f"ALTER TABLE players ADD COLUMN {name} {definition}"
+            )
 
     connection.commit()
     connection.close()
